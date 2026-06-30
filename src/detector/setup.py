@@ -27,6 +27,8 @@ setup(
             'heartbeat = detector.heartbeat:main',
             'heartbeat_pub = detector.heartbeat_pub:main',
             'heartbeat_sub = detector.heartbeat_sub:main',
+            'camera_node = detector.camera_node:main',
+            'detector_node = detector.detector_node:main',
         ],
     },
 )
