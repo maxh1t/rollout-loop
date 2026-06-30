@@ -25,6 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'heartbeat = detector.heartbeat:main',
+            'heartbeat_pub = detector.heartbeat_pub:main',
+            'heartbeat_sub = detector.heartbeat_sub:main',
         ],
     },
 )
