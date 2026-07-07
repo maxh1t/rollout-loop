@@ -1,6 +1,18 @@
+# ROS 2 / colcon build artifacts
 build/
 install/
 log/
+
+# Python cache
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Editor / OS junk
+*.swp
+*~
+.DS_Store
+
+# Test media (not source)
 test_clip.mp4
