@@ -16,3 +16,5 @@ __pycache__/
 
 # Test media (not source)
 test_clip.mp4
+.claude/settings.local.json
+.idea

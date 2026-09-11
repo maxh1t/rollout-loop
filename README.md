@@ -30,8 +30,9 @@ Raspberry Pi.
 git clone <your-repo-url> ros-dev-loop
 cd ros-dev-loop
 
-# 2. Source the ROS 2 Jazzy environment
-source /opt/ros/jazzy/setup.bash
+# 2. Source the workspace environment (ROS 2 Jazzy + project env vars,
+#    e.g. ROS_DOMAIN_ID — do this on every machine: VM, Pi, any reimage)
+source scripts/env.sh
 
 # 3. Build with colcon
 colcon build
