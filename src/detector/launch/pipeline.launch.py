@@ -3,6 +3,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -19,7 +20,14 @@ def generate_launch_description():
     camera_node = Node(
         package='detector', executable='camera_node', name='camera_node',
         parameters=[{
-            'source': LaunchConfiguration('source'),
+            # camera_node declares 'source' as a STRING parameter. Without
+            # forcing the type here, a purely-numeric value like source:=0
+            # (a camera device index) gets YAML-inferred as an INTEGER by
+            # launch_ros and camera_node crashes on the type mismatch —
+            # only shows up once you pass a device index instead of a
+            # video file path, since 'test_clip.mp4' is unambiguously a
+            # string.
+            'source': ParameterValue(LaunchConfiguration('source'), value_type=str),
             'fps': LaunchConfiguration('fps'),
         }],
     )
