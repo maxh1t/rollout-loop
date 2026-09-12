@@ -58,7 +58,21 @@ class CameraNode(Node):
         self.timer = self.create_timer(1.0 / self.fps, self.tick)
 
     def _open_capture(self):
-        return cv2.VideoCapture(self.source)
+        cap = cv2.VideoCapture(self.source, cv2.CAP_V4L2) if self.is_camera \
+            else cv2.VideoCapture(self.source)
+        if self.is_camera:
+            # Two independent fixes, both confirmed necessary on this
+            # camera/driver (observed: ~14 fps instead of the requested
+            # 30, on hardware independently proven able to do ~30 fps):
+            #  - CAP_PROP_FPS: the fps parameter otherwise only controlled
+            #    the ROS publish timer, never told the camera hardware
+            #    what rate to capture at.
+            #  - CAP_PROP_BUFFERSIZE: OpenCV's V4L2 backend defaults to a
+            #    shallow buffer queue here, causing synchronous stalls per
+            #    frame; a deeper queue lets frames stay in flight.
+            cap.set(cv2.CAP_PROP_FPS, self.fps)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 4)
+        return cap
 
     def tick(self):
         ok, frame = self.cap.read()
