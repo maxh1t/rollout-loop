@@ -1,3 +1,6 @@
+import os
+from glob import glob
+
 from setuptools import find_packages, setup
 
 package_name = 'detector'
@@ -10,6 +13,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,9 +28,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'heartbeat = detector.heartbeat:main',
-            'heartbeat_pub = detector.heartbeat_pub:main',
-            'heartbeat_sub = detector.heartbeat_sub:main',
             'camera_node = detector.camera_node:main',
             'detector_node = detector.detector_node:main',
         ],

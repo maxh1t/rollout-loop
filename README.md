@@ -1,19 +1,16 @@
 # ros-dev-loop
 
-A ROS 2 (Jazzy) development-loop workspace. The `detector` package is a small
-test bench: a motion-detector pipeline (camera node + detector node) plus a few
-heartbeat nodes used to exercise the build/run loop before deploying to a
-Raspberry Pi.
+A ROS 2 (Jazzy) development-loop workspace. The `detector` package is a
+motion-detector pipeline (camera node + detector node) exercised on a laptop
+VM before deploying to a Raspberry Pi.
 
 ## Package: `detector` (ament_python)
 
 | Node             | Description                                                        | Run command                          |
 | ---------------- | ------------------------------------------------------------------ | ------------------------------------ |
-| `heartbeat`      | Timer-only node that logs `live, tick N` once per second.          | `ros2 run detector heartbeat`        |
-| `heartbeat_pub`  | Publishes a `std_msgs/String` on `heartbeat` once per second.      | `ros2 run detector heartbeat_pub`    |
-| `heartbeat_sub`  | Subscribes to `heartbeat` and logs each received message.          | `ros2 run detector heartbeat_sub`    |
 | `camera_node`    | Reads frames from `source` and publishes `/camera/image_raw`.      | `ros2 run detector camera_node --ros-args -p source:=/path/to/clip.mp4` |
 | `detector_node`  | Differences frames from `/camera/image_raw`, publishes `/detector/motion` (`std_msgs/Bool`). | `ros2 run detector detector_node` |
+| `image_transport republish` | Not part of this package — the standalone ROS tool that republishes `/camera/image_raw` as JPEG on `/camera/image_raw/compressed`. Requires `ros-jazzy-compressed-image-transport`. | see launch file below |
 
 ### Camera / detector notes
 
@@ -40,20 +37,21 @@ colcon build
 # 4. Source the local overlay (do this in every new shell)
 source install/setup.bash
 
-# 5. Run a node
-ros2 run detector heartbeat
+# 5. Run the pipeline
+ros2 launch detector pipeline.launch.py
 ```
 
-### Run the camera + detector pipeline
+### Launch file
 
-In two terminals (source `install/setup.bash` in each):
+`src/detector/launch/pipeline.launch.py` starts `camera_node` + `detector_node`
+together instead of running each by hand:
 
 ```bash
-# Terminal 1 — publish frames from a video file
-ros2 run detector camera_node --ros-args -p source:=/path/to/clip.mp4
+# Defaults: source=test_clip.mp4, fps=30, compressed=false
+ros2 launch detector pipeline.launch.py
 
-# Terminal 2 — detect motion and publish /detector/motion
-ros2 run detector detector_node
+# Real camera, and also publish the JPEG-compressed topic
+ros2 launch detector pipeline.launch.py source:=0 compressed:=true
 ```
 
 ## Deployment
