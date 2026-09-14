@@ -7,6 +7,7 @@ import onnxruntime as ort
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from vision_msgs.msg import (
@@ -26,6 +27,9 @@ LOG_INTERVAL_FRAMES = 30
 
 # Padding color used by YOLO's own letterbox preprocessing (mid-gray).
 LETTERBOX_COLOR = (114, 114, 114)
+
+# Only these have a committed ONNX export (see scripts/export_model.py).
+SUPPORTED_RESOLUTIONS = (320, 640)
 
 
 class ObjectDetectorNode(Node):
@@ -63,13 +67,7 @@ class ObjectDetectorNode(Node):
         if unknown:
             self.get_logger().warning(f'Ignoring unknown class name(s): {unknown}')
 
-        model_path = (
-            f'{get_package_share_directory("detector")}/models/'
-            f'yolov8n_{self.resolution}.onnx'
-        )
-        self.session = ort.InferenceSession(
-            model_path, providers=['CPUExecutionProvider'])
-        self.input_name = self.session.get_inputs()[0].name
+        self.session, self.input_name = self._load_session(self.resolution)
 
         self.bridge = CvBridge()
         self.subscription = self.create_subscription(
@@ -83,11 +81,53 @@ class ObjectDetectorNode(Node):
         self.inference_time_total = 0.0
         self.window_start = time.monotonic()
 
+        self.add_on_set_parameters_callback(self._on_set_parameters)
+
         classes_desc = sorted(target_classes) if self.target_class_ids else ['all']
         self.get_logger().info(
             f'Running YOLOv8n ONNX ({self.resolution}x{self.resolution}) on CPU, '
             f'classes={classes_desc}, conf_threshold={self.conf_threshold}, '
             f'iou_threshold={self.iou_threshold}')
+
+    @staticmethod
+    def _load_session(resolution):
+        model_path = (
+            f'{get_package_share_directory("detector")}/models/'
+            f'yolov8n_{resolution}.onnx'
+        )
+        session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
+        return session, session.get_inputs()[0].name
+
+    def _on_set_parameters(self, params):
+        """Lets `resolution`, `conf_threshold`, `iou_threshold` and `classes`
+        be changed live (e.g. from Foxglove's Parameters panel) without
+        restarting the node. Runs on the same single-threaded executor as
+        on_image, so there's no risk of it swapping self.session mid-frame.
+        """
+        for param in params:
+            if param.name == 'resolution' and param.value not in SUPPORTED_RESOLUTIONS:
+                return SetParametersResult(
+                    successful=False,
+                    reason=f'resolution must be one of {SUPPORTED_RESOLUTIONS} '
+                           f'(only sizes with a committed ONNX export)')
+
+        for param in params:
+            if param.name == 'resolution' and param.value != self.resolution:
+                self.session, self.input_name = self._load_session(param.value)
+                self.resolution = param.value
+                self.get_logger().info(
+                    f'Reloaded model at {self.resolution}x{self.resolution}')
+            elif param.name == 'conf_threshold':
+                self.conf_threshold = param.value
+            elif param.name == 'iou_threshold':
+                self.iou_threshold = param.value
+            elif param.name == 'classes':
+                self.target_class_ids = {
+                    COCO_CLASSES.index(name) for name in param.value
+                    if name in COCO_CLASSES
+                }
+
+        return SetParametersResult(successful=True)
 
     def on_image(self, msg):
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
