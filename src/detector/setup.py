@@ -14,6 +14,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'models'), glob('models/*.onnx')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -30,6 +31,7 @@ setup(
         'console_scripts': [
             'camera_node = detector.camera_node:main',
             'detector_node = detector.detector_node:main',
+            'object_detector_node = detector.object_detector_node:main',
         ],
     },
 )

@@ -10,11 +10,17 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>vision_msgs</exec_depend>
   <exec_depend>cv_bridge</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>image_transport</exec_depend>
+
+  <!-- onnxruntime has no apt/rosdep key for its Python bindings on this
+       platform; install via `pip install --break-system-packages onnxruntime`
+       (see README). -->
+
 
   <export>
     <build_type>ament_python</build_type>

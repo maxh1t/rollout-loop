@@ -16,6 +16,12 @@ def generate_launch_description():
         'compressed', default_value='false',
         description='also run image_transport republish to publish '
                      '/camera/image_raw/compressed')
+    resolution_arg = DeclareLaunchArgument(
+        'resolution', default_value='640',
+        description='object_detector_node ONNX model input size: 320 or 640')
+    conf_threshold_arg = DeclareLaunchArgument(
+        'conf_threshold', default_value='0.5',
+        description='object_detector_node minimum detection confidence')
 
     camera_node = Node(
         package='detector', executable='camera_node', name='camera_node',
@@ -36,6 +42,17 @@ def generate_launch_description():
         package='detector', executable='detector_node', name='detector_node',
     )
 
+    object_detector_node = Node(
+        package='detector', executable='object_detector_node',
+        name='object_detector_node',
+        parameters=[{
+            'resolution': ParameterValue(
+                LaunchConfiguration('resolution'), value_type=int),
+            'conf_threshold': ParameterValue(
+                LaunchConfiguration('conf_threshold'), value_type=float),
+        }],
+    )
+
     republish_node = Node(
         package='image_transport', executable='republish', name='image_republisher',
         arguments=['raw', 'compressed'],
@@ -47,6 +64,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        source_arg, fps_arg, compressed_arg,
-        camera_node, detector_node, republish_node,
+        source_arg, fps_arg, compressed_arg, resolution_arg, conf_threshold_arg,
+        camera_node, detector_node, object_detector_node, republish_node,
     ])
