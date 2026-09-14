@@ -63,7 +63,26 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('compressed')),
     )
 
+    # The annotated stream is specifically for remote viewing (Foxglove over
+    # LAN/WiFi), so it's always republished compressed — unlike the raw feed
+    # above, there's no dev-loop reason to ever want it uncompressed.
+    annotated_republish_node = Node(
+        package='image_transport', executable='republish',
+        name='annotated_republisher',
+        # image_transport::Publisher always advertises a raw passthrough
+        # alongside any requested sub-transport, regardless of these
+        # arguments (same as republish_node above) — an unmapped /out
+        # topic is a harmless side effect, not something these args
+        # control.
+        arguments=['raw', 'compressed'],
+        remappings=[
+            ('in', '/detector/objects/annotated'),
+            ('out/compressed', '/detector/objects/annotated/compressed'),
+        ],
+    )
+
     return LaunchDescription([
         source_arg, fps_arg, compressed_arg, resolution_arg, conf_threshold_arg,
-        camera_node, detector_node, object_detector_node, republish_node,
+        camera_node, detector_node, object_detector_node,
+        republish_node, annotated_republish_node,
     ])

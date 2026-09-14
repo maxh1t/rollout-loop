@@ -11,7 +11,7 @@ exercised on a laptop VM before deploying to a Raspberry Pi.
 | `camera_node`    | Reads frames from `source` and publishes `/camera/image_raw`.      | `ros2 run detector camera_node --ros-args -p source:=/path/to/clip.mp4` |
 | `detector_node`  | Differences frames from `/camera/image_raw`, publishes `/detector/motion` (`std_msgs/Bool`). | `ros2 run detector detector_node` |
 | `object_detector_node` | Runs a YOLOv8n ONNX model (CPU, via ONNX Runtime) on `/camera/image_raw`, publishes `/detector/objects` (`vision_msgs/Detection2DArray`) and an annotated copy on `/detector/objects/annotated`. | `ros2 run detector object_detector_node` |
-| `image_transport republish` | Not part of this package — the standalone ROS tool that republishes `/camera/image_raw` as JPEG on `/camera/image_raw/compressed`. Requires `ros-jazzy-compressed-image-transport`. | see launch file below |
+| `image_transport republish` | Not part of this package — the standalone ROS tool. Two instances run via the launch file: one republishes `/camera/image_raw` as JPEG on `/camera/image_raw/compressed` (opt-in, `compressed:=true`), the other always republishes `/detector/objects/annotated` as JPEG on `/detector/objects/annotated/compressed` (always on — the annotated stream is specifically for remote/Foxglove viewing over LAN). Requires `ros-jazzy-compressed-image-transport`. | see launch file below |
 
 ### Camera / detector notes
 
