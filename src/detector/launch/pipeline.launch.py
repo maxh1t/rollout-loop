@@ -17,7 +17,7 @@ def generate_launch_description():
         description='also run image_transport republish to publish '
                      '/camera/image_raw/compressed')
     resolution_arg = DeclareLaunchArgument(
-        'resolution', default_value='640',
+        'resolution', default_value='320',
         description='object_detector_node ONNX model input size: 320 or 640')
     conf_threshold_arg = DeclareLaunchArgument(
         'conf_threshold', default_value='0.5',

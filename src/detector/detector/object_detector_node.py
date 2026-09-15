@@ -1,5 +1,10 @@
+import hashlib
+import json
+import os
 import resource
+import subprocess
 import time
+from datetime import datetime, timezone
 
 import cv2
 import numpy as np
@@ -10,6 +15,7 @@ from cv_bridge import CvBridge
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from std_srvs.srv import Trigger
 from vision_msgs.msg import (
     BoundingBox2D,
     Detection2D,
@@ -51,6 +57,7 @@ class ObjectDetectorNode(Node):
         self.declare_parameter('conf_threshold', 0.5)
         self.declare_parameter('iou_threshold', 0.45)
         self.declare_parameter('classes', ['person'])
+        self.declare_parameter('snapshot_dir', '~/vision_stand_snapshots')
 
         self.resolution = \
             self.get_parameter('resolution').get_parameter_value().integer_value
@@ -67,7 +74,12 @@ class ObjectDetectorNode(Node):
         if unknown:
             self.get_logger().warning(f'Ignoring unknown class name(s): {unknown}')
 
-        self.session, self.input_name = self._load_session(self.resolution)
+        self.snapshot_dir = os.path.expanduser(
+            self.get_parameter('snapshot_dir').get_parameter_value().string_value)
+
+        self.session, self.input_name, self.model_sha256 = \
+            self._load_session(self.resolution)
+        self.code_version = self._get_code_version()
 
         self.bridge = CvBridge()
         self.subscription = self.create_subscription(
@@ -76,6 +88,12 @@ class ObjectDetectorNode(Node):
             Detection2DArray, '/detector/objects', 10)
         self.annotated_pub = self.create_publisher(
             Image, '/detector/objects/annotated', 10)
+        self.snapshot_srv = self.create_service(
+            Trigger, '/detector/take_snapshot', self.on_take_snapshot)
+
+        self.last_frame = None
+        self.last_detections = None
+        self.last_header = None
 
         self.frame_count = 0
         self.inference_time_total = 0.0
@@ -96,7 +114,25 @@ class ObjectDetectorNode(Node):
             f'yolov8n_{resolution}.onnx'
         )
         session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
-        return session, session.get_inputs()[0].name
+        with open(model_path, 'rb') as f:
+            sha256 = hashlib.sha256(f.read()).hexdigest()
+        return session, session.get_inputs()[0].name, sha256
+
+    @staticmethod
+    def _get_code_version():
+        """Best-effort git commit SHA of the running code, recorded into every
+        snapshot's metadata. Falls back to 'unknown' rather than failing the
+        node — e.g. if colcon copied files out of the git checkout instead of
+        symlinking them.
+        """
+        try:
+            repo_dir = os.path.dirname(os.path.realpath(__file__))
+            result = subprocess.run(
+                ['git', '-C', repo_dir, 'rev-parse', 'HEAD'],
+                capture_output=True, text=True, timeout=5, check=True)
+            return result.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return 'unknown'
 
     def _on_set_parameters(self, params):
         """Lets `resolution`, `conf_threshold`, `iou_threshold` and `classes`
@@ -113,7 +149,8 @@ class ObjectDetectorNode(Node):
 
         for param in params:
             if param.name == 'resolution' and param.value != self.resolution:
-                self.session, self.input_name = self._load_session(param.value)
+                self.session, self.input_name, self.model_sha256 = \
+                    self._load_session(param.value)
                 self.resolution = param.value
                 self.get_logger().info(
                     f'Reloaded model at {self.resolution}x{self.resolution}')
@@ -139,6 +176,10 @@ class ObjectDetectorNode(Node):
         inference_s = time.monotonic() - t0
 
         detections = self._postprocess(output, frame.shape, scale, pad)
+
+        self.last_frame = frame
+        self.last_detections = detections
+        self.last_header = msg.header
 
         self._publish_detections(detections, msg.header)
         self._publish_annotated(frame, detections, msg.header)
@@ -226,7 +267,8 @@ class ObjectDetectorNode(Node):
             msg.detections.append(det)
         self.detections_pub.publish(msg)
 
-    def _publish_annotated(self, frame, detections, header):
+    @staticmethod
+    def _draw_annotations(frame, detections):
         annotated = frame.copy()
         for x1, y1, x2, y2, class_id, score in detections:
             p1, p2 = (int(x1), int(y1)), (int(x2), int(y2))
@@ -234,9 +276,66 @@ class ObjectDetectorNode(Node):
             label = f'{COCO_CLASSES[class_id]} {score:.2f}'
             cv2.putText(annotated, label, (p1[0], max(p1[1] - 8, 0)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        return annotated
+
+    def _publish_annotated(self, frame, detections, header):
+        annotated = self._draw_annotations(frame, detections)
         out = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
         out.header = header
         self.annotated_pub.publish(out)
+
+    def on_take_snapshot(self, request, response):
+        """Freezes the most recently processed frame + its detections to
+        disk as a JPEG plus a JSON metadata sidecar (MAX-9). This is a
+        staging artifact for scripts/build_lerobot_dataset.py, not the final
+        LeRobotDataset itself — it records raw facts only, so the dataset
+        build step and the reproducibility check both work from the same
+        ground truth.
+        """
+        if self.last_frame is None:
+            response.success = False
+            response.message = 'No frame captured yet'
+            return response
+
+        os.makedirs(self.snapshot_dir, exist_ok=True)
+        now = datetime.now(timezone.utc)
+        stamp = now.strftime('%Y%m%dT%H%M%S%fZ')
+        image_path = os.path.join(self.snapshot_dir, f'snapshot_{stamp}.jpg')
+        metadata_path = os.path.join(self.snapshot_dir, f'snapshot_{stamp}.json')
+
+        annotated = self._draw_annotations(self.last_frame, self.last_detections)
+        cv2.imwrite(image_path, annotated)
+
+        metadata = {
+            'codebase_version': self.code_version,
+            'capture_timestamp_utc': now.isoformat(),
+            'frame_id': self.last_header.frame_id,
+            'image_shape': [int(d) for d in self.last_frame.shape],
+            'model': {
+                'name': 'yolov8n',
+                'resolution': self.resolution,
+                'file': f'yolov8n_{self.resolution}.onnx',
+                'sha256': self.model_sha256,
+                'onnxruntime_version': ort.__version__,
+                'conf_threshold': self.conf_threshold,
+                'iou_threshold': self.iou_threshold,
+            },
+            'detections': [
+                {
+                    'class_name': COCO_CLASSES[class_id],
+                    'score': float(score),
+                    'bbox_xyxy': [float(x1), float(y1), float(x2), float(y2)],
+                }
+                for x1, y1, x2, y2, class_id, score in self.last_detections
+            ],
+        }
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+
+        response.success = True
+        response.message = f'Saved {image_path} and {metadata_path}'
+        self.get_logger().info(response.message)
+        return response
 
     def _log_stats(self, inference_s):
         self.frame_count += 1

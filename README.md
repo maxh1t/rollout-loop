@@ -26,7 +26,7 @@ exercised on a laptop VM before deploying to a Raspberry Pi.
 `object_detector_node` runs YOLOv8n (COCO-pretrained, no custom training)
 exported to ONNX, on CPU via ONNX Runtime. Params:
 
-- `resolution` (320 or 640, default 640) — selects `models/yolov8n_<resolution>.onnx`.
+- `resolution` (320 or 640, default 320) — selects `models/yolov8n_<resolution>.onnx`.
 - `conf_threshold` (default 0.5), `iou_threshold` (default 0.45).
 - `classes` (default `['person']`) — filters detections to these COCO class
   names post-inference; the model itself always scores all 80 classes, so
@@ -64,6 +64,33 @@ python3 scripts/export_model.py
 
 The Pi only ever needs `onnxruntime` + the committed `.onnx` files — it
 never needs `ultralytics`/PyTorch.
+
+### Snapshot capture (P3)
+
+`object_detector_node` also serves `/detector/take_snapshot`
+(`std_srvs/srv/Trigger`, no request fields) — on call, it freezes the most
+recently processed frame + its detections to disk as a JPEG plus a JSON
+metadata sidecar (`snapshot_dir` param, default `~/vision_stand_snapshots`).
+The sidecar records the code version (git SHA), the model file's sha256 (not
+just its filename), the ONNX Runtime version, thresholds, and the detection
+result — this is deliberately more than an ad-hoc shape, since the point is
+a later reproducibility check against exactly this metadata.
+
+Two ways to trigger it, both work over the LAN the same way Foxglove's live
+view already does:
+
+- **Foxglove:** add a "Call Service" panel pointed at `/detector/take_snapshot`
+  (empty request `{}`) — `foxglove_bridge`'s default capabilities already
+  include `services`, so no extra bridge config is needed.
+- **Terminal (scriptable fallback):**
+  ```bash
+  ros2 service call /detector/take_snapshot std_srvs/srv/Trigger {}
+  ```
+
+This staging artifact isn't itself a `LeRobotDataset` — that gets built
+laptop-side (see `scripts/build_lerobot_dataset.py`), since the real
+`lerobot` package is heavy enough (HF `datasets`, video encoding) that it
+follows the same never-on-the-Pi rule as `ultralytics` above.
 
 ## Build and run from scratch
 
