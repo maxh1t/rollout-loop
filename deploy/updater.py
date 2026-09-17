@@ -88,13 +88,35 @@ def run_health_check():
     return result.returncode == 0
 
 
+def set_env_var(path, key, value):
+    """Updates one KEY=value line in an env file, preserving every other
+    line -- this file also carries device-specific config (e.g.
+    CAMERA_SOURCE) that this script doesn't own and must not clobber.
+    """
+    try:
+        with open(path) as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    new_line = f'{key}={value}\n'
+    for i, line in enumerate(lines):
+        if line.split('=', 1)[0] == key:
+            lines[i] = new_line
+            break
+    else:
+        lines.append(new_line)
+
+    with open(path, 'w') as f:
+        f.writelines(lines)
+
+
 def swap_to(tag):
     image = f'{IMAGE_REPO}:{tag}'
     log.info(f'Pulling {image}')
     subprocess.run(['docker', 'pull', image], check=True)
 
-    with open(VERSION_ENV_FILE, 'w') as f:
-        f.write(f'IMAGE_TAG={tag}\n')
+    set_env_var(VERSION_ENV_FILE, 'IMAGE_TAG', tag)
 
     log.info(f'Restarting {APP_SERVICE} on {tag}')
     subprocess.run(['systemctl', 'restart', APP_SERVICE], check=True)

@@ -13,7 +13,7 @@ Wants=network-online.target
 # instead of a one-time snapshot from container start.
 EnvironmentFile=/etc/vision-stand/version.env
 ExecStartPre=-/usr/bin/docker rm -f vision-stand
-ExecStart=/usr/bin/docker run --rm --name vision-stand --network host --ipc host -v /dev:/dev --device-cgroup-rule='c 81:* rmw' -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/ros-dev-loop:${IMAGE_TAG} ros2 launch detector pipeline.launch.py source:=${CAMERA_SOURCE} compressed:=true
+ExecStart=/bin/bash -c 'exec docker run --rm --name vision-stand --network host --ipc host -v /dev:/dev --device-cgroup-rule="c 81:* rmw" -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/ros-dev-loop:$IMAGE_TAG ros2 launch detector pipeline.launch.py source:=$CAMERA_SOURCE compressed:=true'
 ExecStop=/usr/bin/docker stop vision-stand
 Restart=always
 RestartSec=5
