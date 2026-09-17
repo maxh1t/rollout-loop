@@ -3,8 +3,8 @@
 <package format="3">
   <name>detector</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="max@todo.todo">max</maintainer>
+  <description>Vision Stand: camera + on-device object detection pipeline for a networked Raspberry Pi vision stand.</description>
+  <maintainer email="m4xh17@gmail.com">max</maintainer>
   <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>
@@ -19,7 +19,7 @@
   <exec_depend>image_transport</exec_depend>
 
   <!-- onnxruntime has no apt/rosdep key for its Python bindings on this
-       platform; install via `pip install --break-system-packages onnxruntime`
+       platform; install via pip with the "break system packages" flag
        (see README). -->
 
 

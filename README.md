@@ -135,9 +135,66 @@ ros2 launch detector pipeline.launch.py
 ros2 launch detector pipeline.launch.py source:=0 compressed:=true
 ```
 
-## Deployment
+## Deployment (P4)
 
-`scripts/deploy.sh` is a commented-out draft template for pushing the workspace
-to a Raspberry Pi. The Pi is not set up yet, so the script is intentionally not
-runnable: fill in the Pi host/user/path placeholders and uncomment the steps
-once the target is known.
+The stack is containerized and shipped as a versioned image, not built on
+the device. `scripts/deploy.sh` (the earlier rsync-and-`colcon build`-on-Pi
+draft) is superseded by this — devices never get a source checkout at all.
+
+### How a commit reaches a device
+
+1. A push to `main` touching `src/**` or the `Dockerfile` triggers
+   `.github/workflows/build.yml`, which builds the image natively on a
+   GitHub-hosted arm64 runner (`ubuntu-24.04-arm` — free for this public
+   repo, no QEMU emulation needed) and pushes it to
+   `ghcr.io/maxh1t/ros-dev-loop:<git-sha>`. CI's job ends there — it never
+   touches a device.
+2. `deploy/rollout.json` is the single source of truth for which tag each
+   device should run, keyed by device id (`pi5`, `vm-sim`). Promotion and
+   rollback are both just edits to this file:
+   ```bash
+   scripts/set_version.sh <device-id> <tag>
+   ```
+3. Each device runs its own reconciler (`deploy/updater.py`, via
+   `vision-stand-updater.timer`, every 5 minutes) that checks
+   `rollout.json` on its own and pulls + swaps if it's behind. This is
+   pull-only by design — nothing (CI included) ever reaches inbound into a
+   device, so an offline device just catches up whenever it next wakes.
+
+### Bringing up a new device
+
+```bash
+scripts/provision_device.sh <ssh-host> <device-id> <vision-stand.service|vision-stand-sim.service>
+```
+Installs Docker if missing, copies the small set of host-side files
+(`deploy/updater.py`, the systemd units) over SSH, and enables the
+always-on services. Use `vision-stand.service` for a device with a real
+camera at `/dev/video0`, or `vision-stand-sim.service` for a device with no
+camera that reads `test_clip.mp4` instead (used for the canary/second
+simulated fleet member, since a single physical device can't demonstrate a
+staged rollout on its own).
+
+After provisioning, give the device its first version:
+```bash
+scripts/set_version.sh <device-id> <tag>
+ssh <ssh-host> sudo systemctl start vision-stand-updater.service
+```
+
+### What runs on a device
+
+Four systemd units, all `Restart=always` and enabled at boot (this also
+closes the standing gap from P2/P3 — nothing needed a manual SSH restart
+after a reboot anymore):
+- `vision-stand.service` — the camera + detector pipeline container.
+- `vision-stand-foxglove.service` — `foxglove_bridge`, for remote viewing.
+- `vision-stand-updater.timer` / `.service` — the fleet reconciler above.
+
+### Health signal
+
+`deploy/healthcheck.py` runs inside the container right after a version
+swap (`docker exec`) and requires a few frames on `/camera/image_raw`
+within a timeout. It catches a crashed node, a camera that failed to open,
+or ROS never coming up — it does **not** catch the detector running and
+publishing wrong/garbage results, since frame arrival says nothing about
+whether the model output is correct. Same class of gap as P3's
+reproducibility check.

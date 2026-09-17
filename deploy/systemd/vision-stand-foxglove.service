@@ -1,0 +1,16 @@
+[Unit]
+Description=Vision Stand foxglove_bridge (containerized)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/vision-stand/version.env
+ExecStartPre=-/usr/bin/docker rm -f vision-stand-foxglove
+ExecStart=/usr/bin/docker run --rm --name vision-stand-foxglove --network host -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/ros-dev-loop:${IMAGE_TAG} ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765
+ExecStop=/usr/bin/docker stop vision-stand-foxglove
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

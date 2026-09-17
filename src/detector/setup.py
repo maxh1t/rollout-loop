@@ -19,8 +19,9 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='max',
-    maintainer_email='max@todo.todo',
-    description='TODO: Package description',
+    maintainer_email='m4xh17@gmail.com',
+    description='Vision Stand: camera + on-device object detection pipeline '
+                 'for a networked Raspberry Pi vision stand.',
     license='MIT',
     extras_require={
         'test': [
