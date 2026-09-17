@@ -7,6 +7,13 @@ FROM ros:jazzy-ros-base
 WORKDIR /workspace
 COPY src/detector src/detector
 
+# cv_bridge's apt package transitively pulls in a full desktop-enabled
+# OpenCV/GStreamer/Qt/GTK stack on Ubuntu — none of it reachable in a
+# headless container. Most of it is apt Recommends, not hard Depends, so
+# disabling Recommends globally (picked up by rosdep's own apt-get calls
+# too, not just the explicit install below) trims it substantially.
+RUN echo 'APT::Install-Recommends "0";' > /etc/apt/apt.conf.d/99no-recommends
+
 # rosdep resolves everything package.xml declares (vision_msgs, cv_bridge,
 # python3-opencv, image_transport, launch, launch_ros, std_srvs, ...).
 # foxglove_bridge and compressed_image_transport aren't `detector`'s own
@@ -19,6 +26,7 @@ RUN apt-get update && \
       python3-pip \
       ros-jazzy-foxglove-bridge \
       ros-jazzy-compressed-image-transport && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # onnxruntime has no apt/rosdep key for its Python bindings on this platform
