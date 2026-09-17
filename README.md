@@ -147,16 +147,22 @@ draft) is superseded by this — devices never get a source checkout at all.
    `.github/workflows/build.yml`, which builds the image natively on a
    GitHub-hosted arm64 runner (`ubuntu-24.04-arm` — free for this public
    repo, no QEMU emulation needed) and pushes it to
-   `ghcr.io/maxh1t/ros-dev-loop:<git-sha>`. CI's job ends there — it never
-   touches a device.
+   `ghcr.io/maxh1t/ros-dev-loop:<git-sha>`.
 2. `deploy/rollout.json` is the single source of truth for which tag each
-   device should run, keyed by device id (`pi5`, `vm-sim`). Promotion and
-   rollback are both just edits to this file:
+   device should run, keyed by device id (`pi5`, `vm-sim`). As its last
+   step, CI auto-promotes `pi5` to whatever it just built — so for the
+   normal case, `git push` really is the whole loop, no separate deploy
+   step. `vm-sim` is deliberately **not** auto-promoted; it's the
+   canary/second-device stand-in, held back on purpose so a staged
+   rollout is still possible when that's actually being exercised.
+   `scripts/set_version.sh <device-id> <tag>` edits the same file directly
+   and always wins until the next push — this is how you roll back, or
+   how you manually move `vm-sim` for a canary test:
    ```bash
    scripts/set_version.sh <device-id> <tag>
    ```
 3. Each device runs its own reconciler (`deploy/updater.py`, via
-   `vision-stand-updater.timer`, every 5 minutes) that checks
+   `vision-stand-updater.timer`, every 1 minute) that checks
    `rollout.json` on its own and pulls + swaps if it's behind. This is
    pull-only by design — nothing (CI included) ever reaches inbound into a
    device, so an offline device just catches up whenever it next wakes.

@@ -12,7 +12,7 @@ on:
       - '.github/workflows/build.yml'
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -43,3 +43,26 @@ jobs:
         run: |
           docker image inspect ghcr.io/${{ github.repository_owner }}/ros-dev-loop:${{ github.sha }} \
             --format '{{.Size}}' | awk '{printf "Image size: %.1f MB\n", $1/1024/1024}' >> "$GITHUB_STEP_SUMMARY"
+
+      # pi5 always follows the latest successful build -- no manual promote
+      # step for the normal case. vm-sim is deliberately NOT touched here:
+      # it's the canary/second-device stand-in, held back on purpose so a
+      # staged rollout is still possible when that's actually being tested.
+      # A manual `scripts/set_version.sh pi5 <older-sha>` still works at any
+      # time and overrides this until the next push promotes again.
+      - name: Auto-promote pi5
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          python3 -c "
+          import json
+          with open('deploy/rollout.json') as f:
+              data = json.load(f)
+          data['pi5'] = '${{ github.sha }}'
+          with open('deploy/rollout.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
+          git add deploy/rollout.json
+          git commit -m "Auto-promote pi5 -> ${{ github.sha }}" || echo "nothing to commit"
+          git push

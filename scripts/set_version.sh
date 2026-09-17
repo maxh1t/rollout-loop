@@ -21,6 +21,11 @@ tag="$2"
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 rollout_file="$repo_root/deploy/rollout.json"
 
+# CI auto-promotes pi5 on every push (see .github/workflows/build.yml), so
+# this file moves from more than one place -- pull first to avoid a
+# rejected push if CI committed since this checkout was last updated.
+git -C "$repo_root" pull --rebase --autostash
+
 python3 - "$rollout_file" "$device_id" "$tag" <<'EOF'
 import json
 import sys
