@@ -17,6 +17,7 @@ import json
 import logging
 import subprocess
 import sys
+import time
 import urllib.request
 
 DEVICE_ID_FILE = '/etc/vision-stand/device-id'
@@ -53,7 +54,32 @@ def current_tag():
     return image.rsplit(':', 1)[-1] if ':' in image else None
 
 
+CONTAINER_START_TIMEOUT_S = 15
+
+
+def wait_for_container_running():
+    """`systemctl restart` returns once the ExecStart process (the `docker
+    run` CLI) has been forked, not once dockerd has actually created and
+    started the named container — a `docker exec` right after restart can
+    race that and see "No such container". Poll briefly rather than assume.
+    """
+    deadline = time.monotonic() + CONTAINER_START_TIMEOUT_S
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ['docker', 'inspect', '--format', '{{.State.Running}}', APP_CONTAINER],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip() == 'true':
+            return True
+        time.sleep(1)
+    return False
+
+
 def run_health_check():
+    if not wait_for_container_running():
+        log.error(f'{APP_CONTAINER} did not start within '
+                   f'{CONTAINER_START_TIMEOUT_S}s')
+        return False
     result = subprocess.run(
         ['docker', 'exec', APP_CONTAINER,
          '/entrypoint.sh', 'python3', '/workspace/healthcheck.py'],
