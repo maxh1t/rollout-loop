@@ -5,9 +5,15 @@ Requires=docker.service
 Wants=network-online.target
 
 [Service]
+# CAMERA_SOURCE is expected to be a hotplug-stable /dev/v4l/by-id/... path
+# (see scripts/provision_device.sh), not a raw index -- a numeric index can
+# silently point at a different device after a USB re-enumeration. -v
+# /dev:/dev + --device-cgroup-rule (rather than a static --device bind) is
+# what lets the container see /dev change live across an unplug/replug
+# instead of a one-time snapshot from container start.
 EnvironmentFile=/etc/vision-stand/version.env
 ExecStartPre=-/usr/bin/docker rm -f vision-stand
-ExecStart=/usr/bin/docker run --rm --name vision-stand --network host --ipc host --device /dev/video0:/dev/video0 -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/ros-dev-loop:${IMAGE_TAG}
+ExecStart=/usr/bin/docker run --rm --name vision-stand --network host --ipc host -v /dev:/dev --device-cgroup-rule='c 81:* rmw' -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/ros-dev-loop:${IMAGE_TAG} ros2 launch detector pipeline.launch.py source:=${CAMERA_SOURCE} compressed:=true
 ExecStop=/usr/bin/docker stop vision-stand
 Restart=always
 RestartSec=5

@@ -46,6 +46,19 @@ fi
 echo "$device_id" | sudo tee /etc/vision-stand/device-id >/dev/null
 [[ -f /etc/vision-stand/version.env ]] || echo "IMAGE_TAG=" | sudo tee /etc/vision-stand/version.env >/dev/null
 
+if [[ "$app_unit" == "vision-stand.service" ]]; then
+  # A stable by-id path, not a raw /dev/videoN index -- USB re-enumeration
+  # after an unplug/replug can move which index a camera lands on.
+  camera_source=$(ls /dev/v4l/by-id/*-video-index0 2>/dev/null | head -1 || true)
+  if [[ -z "$camera_source" ]]; then
+    echo "WARNING: no /dev/v4l/by-id/*-video-index0 found, falling back to /dev/video0 (not hotplug-safe)" >&2
+    camera_source="/dev/video0"
+  fi
+  sudo sed -i '/^CAMERA_SOURCE=/d' /etc/vision-stand/version.env
+  echo "CAMERA_SOURCE=$camera_source" | sudo tee -a /etc/vision-stand/version.env >/dev/null
+  echo "Detected camera: $camera_source"
+fi
+
 sudo mv /tmp/updater.py /opt/vision-stand/updater.py
 sudo chmod +x /opt/vision-stand/updater.py
 
