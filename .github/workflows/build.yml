@@ -11,8 +11,13 @@ on:
       - '.dockerignore'
       - '.github/workflows/build.yml'
 
+# Read-only against the repo, deliberately: CI builds and publishes images,
+# it never writes back to git. The image version is declared by a human as
+# part of the commit (src/detector/package.xml's <version>, the same way a
+# package.json version bump is), same as deploy/rollout.json's target for a
+# device -- both are ordinary human-authored commits, not CI output.
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 jobs:
@@ -20,6 +25,12 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read package version
+        id: version
+        run: |
+          VERSION=$(grep -oP '(?<=<version>)[^<]+' src/detector/package.xml)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -31,38 +42,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Mirrors `npm publish` refusing to re-publish an existing version --
+      # without this, forgetting to bump <version> would silently overwrite
+      # an already-published tag, and rolling back to that version number
+      # would no longer give you what was originally shipped under it.
+      - name: Ensure this version isn't already published
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/ros-dev-loop:${{ steps.version.outputs.version }}"
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "::error::$IMAGE is already published. Bump <version> in src/detector/package.xml before pushing."
+            exit 1
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/ros-dev-loop:${{ github.sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/ros-dev-loop:${{ steps.version.outputs.version }}
           build-args: GIT_SHA=${{ github.sha }}
 
       - name: Report image size
         run: |
-          docker image inspect ghcr.io/${{ github.repository_owner }}/ros-dev-loop:${{ github.sha }} \
+          docker image inspect ghcr.io/${{ github.repository_owner }}/ros-dev-loop:${{ steps.version.outputs.version }} \
             --format '{{.Size}}' | awk '{printf "Image size: %.1f MB\n", $1/1024/1024}' >> "$GITHUB_STEP_SUMMARY"
-
-      # pi5 always follows the latest successful build -- no manual promote
-      # step for the normal case. vm-sim is deliberately NOT touched here:
-      # it's the canary/second-device stand-in, held back on purpose so a
-      # staged rollout is still possible when that's actually being tested.
-      # A manual `scripts/set_version.sh pi5 <older-sha>` still works at any
-      # time and overrides this until the next push promotes again.
-      - name: Auto-promote pi5
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          python3 -c "
-          import json
-          with open('deploy/rollout.json') as f:
-              data = json.load(f)
-          data['pi5'] = '${{ github.sha }}'
-          with open('deploy/rollout.json', 'w') as f:
-              json.dump(data, f, indent=2)
-              f.write('\n')
-          "
-          git add deploy/rollout.json
-          git commit -m "Auto-promote pi5 -> ${{ github.sha }}" || echo "nothing to commit"
-          git push

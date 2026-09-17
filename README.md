@@ -143,29 +143,40 @@ draft) is superseded by this — devices never get a source checkout at all.
 
 ### How a commit reaches a device
 
-1. A push to `main` touching `src/**` or the `Dockerfile` triggers
-   `.github/workflows/build.yml`, which builds the image natively on a
-   GitHub-hosted arm64 runner (`ubuntu-24.04-arm` — free for this public
-   repo, no QEMU emulation needed) and pushes it to
-   `ghcr.io/maxh1t/ros-dev-loop:<git-sha>`.
-2. `deploy/rollout.json` is the single source of truth for which tag each
-   device should run, keyed by device id (`pi5`, `vm-sim`). As its last
-   step, CI auto-promotes `pi5` to whatever it just built — so for the
-   normal case, `git push` really is the whole loop, no separate deploy
-   step. `vm-sim` is deliberately **not** auto-promoted; it's the
-   canary/second-device stand-in, held back on purpose so a staged
-   rollout is still possible when that's actually being exercised.
-   `scripts/set_version.sh <device-id> <tag>` edits the same file directly
-   and always wins until the next push — this is how you roll back, or
-   how you manually move `vm-sim` for a canary test:
-   ```bash
-   scripts/set_version.sh <device-id> <tag>
-   ```
+Versioning works like a `package.json` version bump, not an opaque build
+number — CI is deliberately **read-only** against this repo; it never
+commits anything back.
+
+1. `src/detector/package.xml`'s `<version>` is the version, human-bumped as
+   part of a normal commit — the same commit that changes the code it
+   describes. `deploy/rollout.json` (which tag each device, keyed by device
+   id, should run) is edited the same way, in the same commit, when you
+   want that version to go live on a device: e.g. bump `<version>` to
+   `0.2.0` and set `rollout.json["pi5"]` to `"0.2.0"` together.
+2. A push to `main` touching `src/**` or the `Dockerfile` triggers
+   `.github/workflows/build.yml`, which reads the version straight from
+   `package.xml`, builds the image natively on a GitHub-hosted arm64 runner
+   (`ubuntu-24.04-arm` — free for this public repo, no QEMU emulation
+   needed), and publishes it to `ghcr.io/maxh1t/ros-dev-loop:<version>`.
+   CI refuses to publish if that version is already published (the same
+   guarantee `npm publish` gives you) — forgetting to bump the version
+   fails the build loudly instead of silently overwriting a tag something
+   might later be rolled back to.
 3. Each device runs its own reconciler (`deploy/updater.py`, via
    `vision-stand-updater.timer`, every 1 minute) that checks
    `rollout.json` on its own and pulls + swaps if it's behind. This is
    pull-only by design — nothing (CI included) ever reaches inbound into a
    device, so an offline device just catches up whenever it next wakes.
+
+For the normal case that's the whole loop: bump the version, point
+`rollout.json` at it, push. `scripts/set_version.sh <device-id> <version>`
+still exists for the exception, not the everyday path — rolling back to an
+already-published version without a new commit, or moving `vm-sim` (the
+canary/second-device stand-in, never touched by the steps above) by hand
+for a staged-rollout test:
+```bash
+scripts/set_version.sh <device-id> <version>
+```
 
 ### Bringing up a new device
 
@@ -175,14 +186,15 @@ scripts/provision_device.sh <ssh-host> <device-id> <vision-stand.service|vision-
 Installs Docker if missing, copies the small set of host-side files
 (`deploy/updater.py`, the systemd units) over SSH, and enables the
 always-on services. Use `vision-stand.service` for a device with a real
-camera at `/dev/video0`, or `vision-stand-sim.service` for a device with no
-camera that reads `test_clip.mp4` instead (used for the canary/second
-simulated fleet member, since a single physical device can't demonstrate a
-staged rollout on its own).
+camera (auto-detects its stable `/dev/v4l/by-id/...` path — see "Camera
+hot-plug" below), or `vision-stand-sim.service` for a device with no camera
+that reads `test_clip.mp4` instead (used for the canary/second simulated
+fleet member, since a single physical device can't demonstrate a staged
+rollout on its own).
 
 After provisioning, give the device its first version:
 ```bash
-scripts/set_version.sh <device-id> <tag>
+scripts/set_version.sh <device-id> <version>
 ssh <ssh-host> sudo systemctl start vision-stand-updater.service
 ```
 
@@ -194,6 +206,20 @@ after a reboot anymore):
 - `vision-stand.service` — the camera + detector pipeline container.
 - `vision-stand-foxglove.service` — `foxglove_bridge`, for remote viewing.
 - `vision-stand-updater.timer` / `.service` — the fleet reconciler above.
+
+### Camera hot-plug
+
+`camera_node`'s `source` should be a stable `/dev/v4l/by-id/...` path, not
+a raw `/dev/videoN` index — a USB unplug/replug re-enumerates the camera
+and can move (or remove) that numeric index, but udev keeps the by-id
+symlink pointing at the right device regardless.
+`scripts/provision_device.sh` auto-detects this for the real-camera unit.
+`vision-stand.service` bind-mounts `/dev` live (`-v /dev:/dev` plus
+`--device-cgroup-rule`) instead of a static `--device` snapshot, so the
+container sees the change. On the app side, `camera_node` releases and
+reopens its capture after 10 consecutive read failures, and its `enabled`
+parameter can be toggled live (e.g. from Foxglove's Parameters panel) to
+deliberately release/reacquire the device without a restart.
 
 ### Health signal
 
