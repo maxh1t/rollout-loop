@@ -4,6 +4,7 @@ import os
 import resource
 import subprocess
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import cv2
@@ -80,6 +81,7 @@ class ObjectDetectorNode(Node):
         self.session, self.input_name, self.model_sha256 = \
             self._load_session(self.resolution)
         self.code_version = self._get_code_version()
+        self.package_version = self._get_package_version()
 
         self.bridge = CvBridge()
         self.subscription = self.create_subscription(
@@ -120,16 +122,18 @@ class ObjectDetectorNode(Node):
 
     @staticmethod
     def _get_code_version():
-        """Git commit SHA of the running code, recorded into every
-        snapshot's metadata (MAX-9) and shown on the annotated feed
-        (MAX-10). Prefers the CODE_VERSION env var, baked into the image at
-        build time from the CI commit (see Dockerfile / build.yml) -- a
-        `git rev-parse` at runtime doesn't work in the container, since
-        the Dockerfile only COPYs src/detector, never .git, and colcon's
-        install step copies files out of the git working tree regardless.
-        Falls back to an actual git lookup for bare-metal/dev-machine runs
-        outside a container, where .git is genuinely present; 'unknown'
-        only if neither is available.
+        """Exact git commit SHA of the running code, recorded into every
+        snapshot's metadata (MAX-9) -- finer-grained than package_version
+        below (many commits can share one released version number), kept
+        for exact reproducibility tracing. Prefers the CODE_VERSION env
+        var, baked into the image at build time from the CI commit (see
+        Dockerfile / build.yml) -- a `git rev-parse` at runtime doesn't
+        work in the container, since the Dockerfile only COPYs
+        src/detector, never .git, and colcon's install step copies files
+        out of the git working tree regardless. Falls back to an actual
+        git lookup for bare-metal/dev-machine runs outside a container,
+        where .git is genuinely present; 'unknown' only if neither is
+        available.
         """
         env_version = os.environ.get('CODE_VERSION')
         if env_version:
@@ -141,6 +145,22 @@ class ObjectDetectorNode(Node):
                 capture_output=True, text=True, timeout=5, check=True)
             return result.stdout.strip()
         except (OSError, subprocess.SubprocessError):
+            return 'unknown'
+
+    @staticmethod
+    def _get_package_version():
+        """Human-facing release version (package.xml's <version>, the same
+        field CI reads to decide what to tag/publish the image as -- see
+        README's Deployment section) -- shown on the annotated feed
+        (MAX-10) so a version swap or rollback is visible on the live
+        video itself. Read from the installed package.xml rather than
+        hardcoded, so it can never drift from what CI actually built.
+        """
+        try:
+            package_xml = os.path.join(
+                get_package_share_directory('detector'), 'package.xml')
+            return ET.parse(package_xml).findtext('version') or 'unknown'
+        except (OSError, ET.ParseError):
             return 'unknown'
 
     def _on_set_parameters(self, params):
@@ -280,10 +300,10 @@ class ObjectDetectorNode(Node):
         annotated = frame.copy()
         # Real, permanent version indicator (replaces the earlier
         # deploy-test placeholder) -- lets a swap/rollback be confirmed
-        # just by looking at the live feed, not just logs. code_version is
-        # the running git SHA, the same value recorded in snapshot metadata
-        # (MAX-9) and set_version.sh tags images by.
-        cv2.putText(annotated, f'build {self.code_version[:7]}', (10, 30),
+        # just by looking at the live feed, not just logs. package_version
+        # is the same version string rollout.json targets and CI tags the
+        # image by (see README's Deployment section).
+        cv2.putText(annotated, f'v{self.package_version}', (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
         for x1, y1, x2, y2, class_id, score in detections:
             p1, p2 = (int(x1), int(y1)), (int(x2), int(y2))
