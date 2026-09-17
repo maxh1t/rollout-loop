@@ -10,8 +10,9 @@ non-issue: it just catches up whenever it next wakes, with no special case.
 
 deploy/rollout.json in the repo is the single source of truth for what
 version this device should run, keyed by device id. Deploy, canary and
-rollback are all just edits to that file (see scripts/set_version.sh) —
-this script's only job is reconciling local state to match it.
+rollback are all just direct edits to that file, committed like any other
+change (see README's Releasing a new version / Rolling back) — this
+script's only job is reconciling local state to match it.
 """
 import json
 import logging

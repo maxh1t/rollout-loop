@@ -79,5 +79,5 @@ sudo systemctl enable --now vision-stand-updater.timer
 echo "Provisioned as device-id=$device_id."
 REMOTE
 
-echo "Next: scripts/set_version.sh $device_id <tag>"
+echo "Next: set deploy/rollout.json[\"$device_id\"], commit, push,"
 echo "then: ssh $host sudo systemctl start vision-stand-updater.service"

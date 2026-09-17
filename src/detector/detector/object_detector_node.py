@@ -302,9 +302,18 @@ class ObjectDetectorNode(Node):
         # deploy-test placeholder) -- lets a swap/rollback be confirmed
         # just by looking at the live feed, not just logs. package_version
         # is the same version string rollout.json targets and CI tags the
-        # image by (see README's Deployment section).
-        cv2.putText(annotated, f'v{self.package_version}', (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        # image by (see README's Deployment section). Bottom-right, small,
+        # white-on-black-outline: legible against any background without
+        # competing with the green detection boxes.
+        h, w = annotated.shape[:2]
+        label = f'v{self.package_version}'
+        font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1
+        (text_w, text_h), _ = cv2.getTextSize(label, font, scale, thickness)
+        pos = (w - text_w - 10, h - 10)
+        cv2.putText(annotated, label, pos, font, scale, (0, 0, 0), thickness + 2,
+                    cv2.LINE_AA)
+        cv2.putText(annotated, label, pos, font, scale, (255, 255, 255), thickness,
+                    cv2.LINE_AA)
         for x1, y1, x2, y2, class_id, score in detections:
             p1, p2 = (int(x1), int(y1)), (int(x2), int(y2))
             cv2.rectangle(annotated, p1, p2, (0, 255, 0), 2)

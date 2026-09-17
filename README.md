@@ -168,15 +168,30 @@ commits anything back.
    pull-only by design — nothing (CI included) ever reaches inbound into a
    device, so an offline device just catches up whenever it next wakes.
 
-For the normal case that's the whole loop: bump the version, point
-`rollout.json` at it, push. `scripts/set_version.sh <device-id> <version>`
-still exists for the exception, not the everyday path — rolling back to an
-already-published version without a new commit, or moving `vm-sim` (the
-canary/second-device stand-in, never touched by the steps above) by hand
-for a staged-rollout test:
+### Releasing a new version
+
+1. Make your code changes.
+2. Bump the version — same number, two places:
+   - `src/detector/package.xml` → `<version>X.Y.Z</version>`
+   - `src/detector/setup.py` → `version='X.Y.Z'`
+3. Point the device at it: `deploy/rollout.json` → `"pi5": "X.Y.Z"`
+4. Commit everything above together and push
+
+### Rolling back
+
+Same mechanism as above, just pointing at a version that's already
+published — no new commit needed to build anything, since that image
+already exists in the registry. Edit `deploy/rollout.json`'s entry back to
+the older version, commit, push:
 ```bash
-scripts/set_version.sh <device-id> <version>
+git add deploy/rollout.json
+git commit -m "Roll pi5 back to X.Y.Z"
+git push origin main
 ```
+
+`vm-sim` (the canary/second-device stand-in) is never touched by step 3
+above — moving it (for a staged-rollout test) is the same one-line edit to
+its own entry.
 
 ### Bringing up a new device
 
@@ -192,9 +207,9 @@ that reads `test_clip.mp4` instead (used for the canary/second simulated
 fleet member, since a single physical device can't demonstrate a staged
 rollout on its own).
 
-After provisioning, give the device its first version:
+After provisioning, give the device its first version — edit
+`deploy/rollout.json`'s entry for it, commit, push, then:
 ```bash
-scripts/set_version.sh <device-id> <version>
 ssh <ssh-host> sudo systemctl start vision-stand-updater.service
 ```
 
