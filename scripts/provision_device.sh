@@ -59,6 +59,7 @@ sudo mv /tmp/vision-stand-updater.service /etc/systemd/system/
 sudo mv /tmp/vision-stand-updater.timer /etc/systemd/system/
 
 sudo systemctl daemon-reload
+sudo systemctl enable --now vision-stand.service
 sudo systemctl enable --now vision-stand-foxglove.service
 sudo systemctl enable --now vision-stand-updater.timer
 
