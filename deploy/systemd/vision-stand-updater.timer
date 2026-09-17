@@ -3,7 +3,7 @@ Description=Periodically run the Vision Stand fleet updater
 
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec=5min
+OnUnitActiveSec=1min
 
 [Install]
 WantedBy=timers.target
