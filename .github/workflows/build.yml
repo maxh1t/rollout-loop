@@ -37,6 +37,7 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/ros-dev-loop:${{ github.sha }}
+          build-args: GIT_SHA=${{ github.sha }}
 
       - name: Report image size
         run: |

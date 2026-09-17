@@ -36,6 +36,14 @@ RUN pip3 install --break-system-packages --no-cache-dir onnxruntime
 
 RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && colcon build"
 
+# Baked in from the CI commit (see .github/workflows/build.yml), not read
+# from .git at runtime -- there is no .git in this image (only src/detector
+# is COPYed above) and colcon's install step copies files out of the git
+# working tree regardless. Placed this late so changing it on every commit
+# doesn't invalidate the expensive layers above.
+ARG GIT_SHA=unknown
+ENV CODE_VERSION=$GIT_SHA
+
 # Runs inside the running container as the device-side health signal for
 # the deploy pipeline (MAX-10) — invoked via `docker exec`, not started on
 # its own, so it isn't part of the default CMD below.

@@ -120,11 +120,20 @@ class ObjectDetectorNode(Node):
 
     @staticmethod
     def _get_code_version():
-        """Best-effort git commit SHA of the running code, recorded into every
-        snapshot's metadata. Falls back to 'unknown' rather than failing the
-        node — e.g. if colcon copied files out of the git checkout instead of
-        symlinking them.
+        """Git commit SHA of the running code, recorded into every
+        snapshot's metadata (MAX-9) and shown on the annotated feed
+        (MAX-10). Prefers the CODE_VERSION env var, baked into the image at
+        build time from the CI commit (see Dockerfile / build.yml) -- a
+        `git rev-parse` at runtime doesn't work in the container, since
+        the Dockerfile only COPYs src/detector, never .git, and colcon's
+        install step copies files out of the git working tree regardless.
+        Falls back to an actual git lookup for bare-metal/dev-machine runs
+        outside a container, where .git is genuinely present; 'unknown'
+        only if neither is available.
         """
+        env_version = os.environ.get('CODE_VERSION')
+        if env_version:
+            return env_version
         try:
             repo_dir = os.path.dirname(os.path.realpath(__file__))
             result = subprocess.run(
