@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 EnvironmentFile=/etc/vision-stand/version.env
 ExecStartPre=-/usr/bin/docker rm -f vision-stand
-ExecStart=/usr/bin/docker run --rm --name vision-stand --network host --device /dev/video0:/dev/video0 -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/ros-dev-loop:${IMAGE_TAG}
+ExecStart=/usr/bin/docker run --rm --name vision-stand --network host --ipc host --device /dev/video0:/dev/video0 -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/ros-dev-loop:${IMAGE_TAG}
 ExecStop=/usr/bin/docker stop vision-stand
 Restart=always
 RestartSec=5
