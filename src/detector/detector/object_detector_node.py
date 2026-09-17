@@ -267,13 +267,14 @@ class ObjectDetectorNode(Node):
             msg.detections.append(det)
         self.detections_pub.publish(msg)
 
-    @staticmethod
-    def _draw_annotations(frame, detections):
+    def _draw_annotations(self, frame, detections):
         annotated = frame.copy()
-        # Deliberate, visible marker for the MAX-10 deploy/rollback test --
-        # a real feature would not do this, this exists purely so the swap
-        # is visible on the live Foxglove feed rather than just in logs.
-        cv2.putText(annotated, 'MAX-10 DEPLOY TEST BUILD', (10, 30),
+        # Real, permanent version indicator (replaces the earlier
+        # deploy-test placeholder) -- lets a swap/rollback be confirmed
+        # just by looking at the live feed, not just logs. code_version is
+        # the running git SHA, the same value recorded in snapshot metadata
+        # (MAX-9) and set_version.sh tags images by.
+        cv2.putText(annotated, f'build {self.code_version[:7]}', (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
         for x1, y1, x2, y2, class_id, score in detections:
             p1, p2 = (int(x1), int(y1)), (int(x2), int(y2))
