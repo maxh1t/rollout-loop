@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 EnvironmentFile=/etc/vision-stand/version.env
 ExecStartPre=-/usr/bin/docker rm -f vision-stand-foxglove
-ExecStart=/usr/bin/docker run --rm --name vision-stand-foxglove --network host --ipc host -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/ros-dev-loop:${IMAGE_TAG} ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765
+ExecStart=/usr/bin/docker run --rm --name vision-stand-foxglove --network host --ipc host -e ROS_DOMAIN_ID=42 ghcr.io/maxh1t/rollout-loop:${IMAGE_TAG} ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765
 ExecStop=/usr/bin/docker stop vision-stand-foxglove
 Restart=always
 RestartSec=5

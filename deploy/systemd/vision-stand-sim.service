@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 EnvironmentFile=/etc/vision-stand/version.env
 ExecStartPre=-/usr/bin/docker rm -f vision-stand
-ExecStart=/usr/bin/docker run --rm --name vision-stand --network host --ipc host -e ROS_DOMAIN_ID=42 -v /opt/vision-stand/test_clip.mp4:/data/test_clip.mp4:ro ghcr.io/maxh1t/ros-dev-loop:${IMAGE_TAG} ros2 launch detector pipeline.launch.py source:=/data/test_clip.mp4 compressed:=true
+ExecStart=/usr/bin/docker run --rm --name vision-stand --network host --ipc host -e ROS_DOMAIN_ID=42 -v /opt/vision-stand/test_clip.mp4:/data/test_clip.mp4:ro ghcr.io/maxh1t/rollout-loop:${IMAGE_TAG} ros2 launch detector pipeline.launch.py source:=/data/test_clip.mp4 compressed:=true
 ExecStop=/usr/bin/docker stop vision-stand
 Restart=always
 RestartSec=5

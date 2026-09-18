@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Fold Pi-captured snapshots (MAX-9's take_snapshot service output) into a
-real local LeRobotDataset, for phase P3.
+"""Folds Pi-captured snapshots (from take_snapshot) into a local
+LeRobotDataset.
 
-Dev-machine-only tool, like scripts/export_model.py: the `lerobot` package
-pulls in torch/torchvision/av, which is why it lives in its own throwaway
-venv and is never installed on the Pi.
+Dev-machine-only, like scripts/export_model.py: `lerobot` pulls in
+torch/torchvision/av, so it lives in its own throwaway venv, never on the Pi.
 
 Usage (from repo root):
     python3 -m venv .venv-lerobot
@@ -12,14 +11,10 @@ Usage (from repo root):
     pip install 'lerobot[dataset]'
     python3 scripts/build_lerobot_dataset.py
 
-Known ontology mismatch (expected, not a bug — see MAX-9/MAX-11): a
-detection snapshot has no robot action/state, so there's nowhere in
-LeRobotDataset's schema for the detection result to live. This script
-folds it into the per-frame `task` field (meant for language-conditioning
-a policy, not structured detection storage) as a human-readable summary,
-and separately copies the full original sidecar JSON into
-`<root>/source_metadata/` since that's the only place the code
-version / model hash / thresholds have anywhere to go.
+A detection snapshot has no robot action/state, so there's nowhere in
+LeRobotDataset's schema for the detection result to live — this script
+folds a human-readable summary into the per-frame `task` field instead, and
+separately copies the full sidecar JSON into `<root>/source_metadata/`.
 """
 import argparse
 import json
@@ -85,10 +80,6 @@ def main():
         print('Nothing new to ingest.')
         return
 
-    # Must be checked before any directory under `root` gets created below,
-    # otherwise root.exists() would always be true and this would always
-    # try to resume (even a from-scratch dataset), falling through to a
-    # Hub lookup for a repo that was never pushed anywhere.
     dataset_already_exists = (root / 'meta' / 'info.json').exists()
 
     dataset = None

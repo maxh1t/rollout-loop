@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# One-time setup for a new fleet device (MAX-10 / P4) — run from the
-# operator's machine over SSH. The device itself never needs a checkout of
-# this repo, ROS, or a build toolchain — just Docker, plus the handful of
-# small files this script copies over.
+# One-time setup for a new fleet device, run from the operator's machine
+# over SSH. The device itself never needs this repo, ROS, or a build
+# toolchain — just Docker, plus the small set of files copied over below.
 #
 # Usage: scripts/provision_device.sh <ssh-host> <device-id> <app-unit>
 #   <ssh-host>   SSH alias/host for the device (e.g. pi)
@@ -47,8 +46,6 @@ echo "$device_id" | sudo tee /etc/vision-stand/device-id >/dev/null
 [[ -f /etc/vision-stand/version.env ]] || echo "IMAGE_TAG=" | sudo tee /etc/vision-stand/version.env >/dev/null
 
 if [[ "$app_unit" == "vision-stand.service" ]]; then
-  # A stable by-id path, not a raw /dev/videoN index -- USB re-enumeration
-  # after an unplug/replug can move which index a camera lands on.
   camera_source=$(ls /dev/v4l/by-id/*-video-index0 2>/dev/null | head -1 || true)
   if [[ -z "$camera_source" ]]; then
     echo "WARNING: no /dev/v4l/by-id/*-video-index0 found, falling back to /dev/video0 (not hotplug-safe)" >&2

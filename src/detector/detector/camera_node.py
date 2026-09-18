@@ -7,36 +7,17 @@ from rcl_interfaces.msg import SetParametersResult
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
-# A camera read failure has to persist for this many consecutive ticks
-# before attempting a reopen -- a single dropped frame isn't a disconnect,
-# and reopening on every miss would thrash a device that's still fine.
 RECONNECT_FAILURE_THRESHOLD = 10
-# Minimum gap between reopen attempts once threshold is hit, so a camera
-# that's genuinely gone doesn't get hammered every tick.
 RECONNECT_RETRY_INTERVAL_S = 1.0
 
 
 class CameraNode(Node):
-    """Reads frames from a source (video file path or camera index) and
-    publishes them to /camera/image_raw.
+    """Reads frames from a source (video file, camera index, or /dev/...
+    path) and publishes them to /camera/image_raw.
 
-    The source is controlled by the `source` parameter so switching from a
-    test video file to a real USB camera on the Pi is a parameter change,
-    not a code change:
-      - a file path  -> reads the video file (looped)
-      - an integer string like "0" -> opens camera device by index
-      - a /dev/... path (e.g. a stable /dev/v4l/by-id/... symlink) -> opens
-        that camera device directly. Prefer this over a numeric index for
-        a real camera: USB re-enumeration after an unplug/replug can move
-        which /dev/videoN a camera lands on, but udev keeps the by-id
-        symlink pointing at the right device regardless.
-
-    For a camera source (not a video file), a reopen is attempted
-    automatically after sustained read failures (see RECONNECT_*), and the
-    `enabled` parameter can be flipped live (e.g. from Foxglove's Parameters
-    panel) to release/reacquire the device on demand -- useful both as a
-    deliberate on/off switch and to test the reconnect path without
-    physically touching hardware.
+    Prefer a stable /dev/v4l/by-id/... path over a numeric index for a real
+    camera: USB re-enumeration can move which /dev/videoN a camera lands on,
+    but udev keeps the by-id symlink pointing at the right device.
     """
 
     def __init__(self):
@@ -64,9 +45,6 @@ class CameraNode(Node):
                 "-p source:=/dev/v4l/by-id/usb-...-video-index0")
             raise SystemExit(1)
 
-        # A purely-numeric source is a camera device index; a /dev/... path
-        # is also a camera (a stable by-id symlink or a raw device node).
-        # Anything else is treated as a video file.
         self.source = int(source) if source.isdigit() else source
         self.is_camera = isinstance(self.source, int) or \
             (isinstance(self.source, str) and self.source.startswith('/dev/'))
@@ -93,9 +71,8 @@ class CameraNode(Node):
         self.timer = self.create_timer(1.0 / self.fps, self.tick)
 
     def _on_set_parameters(self, params):
-        """Lets `enabled` be toggled live (e.g. from Foxglove) to
-        release/reacquire the capture device on demand, without restarting
-        the node.
+        """Lets `enabled` be toggled live to release/reacquire the capture
+        device without restarting the node.
         """
         for param in params:
             if param.name == 'enabled' and param.value != self.enabled:
@@ -115,15 +92,6 @@ class CameraNode(Node):
         cap = cv2.VideoCapture(self.source, cv2.CAP_V4L2) if self.is_camera \
             else cv2.VideoCapture(self.source)
         if self.is_camera:
-            # Two independent fixes, both confirmed necessary on this
-            # camera/driver (observed: ~14 fps instead of the requested
-            # 30, on hardware independently proven able to do ~30 fps):
-            #  - CAP_PROP_FPS: the fps parameter otherwise only controlled
-            #    the ROS publish timer, never told the camera hardware
-            #    what rate to capture at.
-            #  - CAP_PROP_BUFFERSIZE: OpenCV's V4L2 backend defaults to a
-            #    shallow buffer queue here, causing synchronous stalls per
-            #    frame; a deeper queue lets frames stay in flight.
             cap.set(cv2.CAP_PROP_FPS, self.fps)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 4)
         return cap
@@ -152,12 +120,7 @@ class CameraNode(Node):
         self.publisher.publish(msg)
 
     def _maybe_reconnect(self):
-        """Handles a camera that's gone away and come back (e.g. a USB
-        unplug/replug) by releasing and reopening the capture. Relies on
-        `source` being a hotplug-stable path (a /dev/v4l/by-id/... symlink,
-        not a raw index) -- a numeric index can silently start pointing at
-        a different, unrelated device after re-enumeration.
-        """
+        """Releases and reopens the capture after a USB unplug/replug."""
         if self.consecutive_failures < RECONNECT_FAILURE_THRESHOLD:
             return
         now = time.monotonic()

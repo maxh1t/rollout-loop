@@ -15,7 +15,7 @@ def generate_launch_description():
     compressed_arg = DeclareLaunchArgument(
         'compressed', default_value='false',
         description='also run image_transport republish to publish '
-                     '/camera/image_raw/compressed')
+                    '/camera/image_raw/compressed')
     resolution_arg = DeclareLaunchArgument(
         'resolution', default_value='320',
         description='object_detector_node ONNX model input size: 320 or 640')
@@ -26,13 +26,6 @@ def generate_launch_description():
     camera_node = Node(
         package='detector', executable='camera_node', name='camera_node',
         parameters=[{
-            # camera_node declares 'source' as a STRING parameter. Without
-            # forcing the type here, a purely-numeric value like source:=0
-            # (a camera device index) gets YAML-inferred as an INTEGER by
-            # launch_ros and camera_node crashes on the type mismatch —
-            # only shows up once you pass a device index instead of a
-            # video file path, since 'test_clip.mp4' is unambiguously a
-            # string.
             'source': ParameterValue(LaunchConfiguration('source'), value_type=str),
             'fps': LaunchConfiguration('fps'),
         }],
@@ -63,17 +56,9 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('compressed')),
     )
 
-    # The annotated stream is specifically for remote viewing (Foxglove over
-    # LAN/WiFi), so it's always republished compressed — unlike the raw feed
-    # above, there's no dev-loop reason to ever want it uncompressed.
     annotated_republish_node = Node(
         package='image_transport', executable='republish',
         name='annotated_republisher',
-        # image_transport::Publisher always advertises a raw passthrough
-        # alongside any requested sub-transport, regardless of these
-        # arguments (same as republish_node above) — an unmapped /out
-        # topic is a harmless side effect, not something these args
-        # control.
         arguments=['raw', 'compressed'],
         remappings=[
             ('in', '/detector/objects/annotated'),

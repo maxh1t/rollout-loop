@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
-"""Fleet update reconciler (MAX-10 / P4). Runs on the host (not inside a
-container — it manages Docker itself) as a systemd oneshot service, woken
-periodically by vision-stand-updater.timer.
+"""Fleet update reconciler. Runs on the host (manages Docker itself, not
+inside a container) as a systemd oneshot service woken periodically by
+vision-stand-updater.timer.
 
-Pull-only by design: this device reaches out to GitHub and GHCR on its own
-schedule and asks "what should I be running?" — nothing (CI included) ever
-reaches inbound into the device. That's what makes an offline device a
-non-issue: it just catches up whenever it next wakes, with no special case.
-
-deploy/rollout.json in the repo is the single source of truth for what
-version this device should run, keyed by device id. Deploy, canary and
-rollback are all just direct edits to that file, committed like any other
-change (see README's Releasing a new version / Rolling back) — this
-script's only job is reconciling local state to match it.
+Pull-only: this device polls deploy/rollout.json on GitHub and asks "what
+should I be running?" — nothing ever reaches inbound into the device, so
+an offline device just catches up whenever it next wakes.
 """
 import json
 import logging
@@ -23,9 +16,9 @@ import urllib.request
 
 DEVICE_ID_FILE = '/etc/vision-stand/device-id'
 ROLLOUT_URL = (
-    'https://raw.githubusercontent.com/maxh1t/ros-dev-loop/main/deploy/rollout.json'
+    'https://raw.githubusercontent.com/maxh1t/rollout-loop/main/deploy/rollout.json'
 )
-IMAGE_REPO = 'ghcr.io/maxh1t/ros-dev-loop'
+IMAGE_REPO = 'ghcr.io/maxh1t/rollout-loop'
 VERSION_ENV_FILE = '/etc/vision-stand/version.env'
 APP_SERVICE = 'vision-stand.service'
 APP_CONTAINER = 'vision-stand'
@@ -59,11 +52,6 @@ CONTAINER_START_TIMEOUT_S = 15
 
 
 def wait_for_container_running():
-    """`systemctl restart` returns once the ExecStart process (the `docker
-    run` CLI) has been forked, not once dockerd has actually created and
-    started the named container — a `docker exec` right after restart can
-    race that and see "No such container". Poll briefly rather than assume.
-    """
     deadline = time.monotonic() + CONTAINER_START_TIMEOUT_S
     while time.monotonic() < deadline:
         result = subprocess.run(
@@ -90,10 +78,6 @@ def run_health_check():
 
 
 def set_env_var(path, key, value):
-    """Updates one KEY=value line in an env file, preserving every other
-    line -- this file also carries device-specific config (e.g.
-    CAMERA_SOURCE) that this script doesn't own and must not clobber.
-    """
     try:
         with open(path) as f:
             lines = f.readlines()

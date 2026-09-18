@@ -27,28 +27,15 @@ from vision_msgs.msg import (
 
 from detector.coco_classes import COCO_CLASSES
 
-# How often (in processed frames) to log the running FPS/latency/memory
-# numbers this ticket needs. Every frame would be noisy; a periodic summary
-# is enough to characterize sustained-load performance.
-LOG_INTERVAL_FRAMES = 30
-
-# Padding color used by YOLO's own letterbox preprocessing (mid-gray).
-LETTERBOX_COLOR = (114, 114, 114)
-
-# Only these have a committed ONNX export (see scripts/export_model.py).
-SUPPORTED_RESOLUTIONS = (320, 640)
+LOG_INTERVAL_FRAMES = 30  # how often (in frames) to log fps/latency/memory
+LETTERBOX_COLOR = (114, 114, 114)  # YOLO's own letterbox padding color
+SUPPORTED_RESOLUTIONS = (320, 640)  # only sizes with a committed ONNX export
 
 
 class ObjectDetectorNode(Node):
-    """Runs a YOLOv8n ONNX model (CPU, via ONNX Runtime) on frames from
-    /camera/image_raw and publishes the results on /detector/objects
-    (vision_msgs/Detection2DArray), plus an annotated copy of the frame with
-    boxes drawn on it on /detector/objects/annotated for viewing in
-    Foxglove.
-
-    This is separate from the frame-differencing motion detector_node — that
-    one keeps running unchanged; this is the new P2 on-device object
-    detector.
+    """Runs a YOLOv8n ONNX model (CPU, via ONNX Runtime) on
+    /camera/image_raw, publishing detections on /detector/objects and an
+    annotated copy on /detector/objects/annotated.
     """
 
     def __init__(self):
@@ -122,19 +109,6 @@ class ObjectDetectorNode(Node):
 
     @staticmethod
     def _get_code_version():
-        """Exact git commit SHA of the running code, recorded into every
-        snapshot's metadata (MAX-9) -- finer-grained than package_version
-        below (many commits can share one released version number), kept
-        for exact reproducibility tracing. Prefers the CODE_VERSION env
-        var, baked into the image at build time from the CI commit (see
-        Dockerfile / build.yml) -- a `git rev-parse` at runtime doesn't
-        work in the container, since the Dockerfile only COPYs
-        src/detector, never .git, and colcon's install step copies files
-        out of the git working tree regardless. Falls back to an actual
-        git lookup for bare-metal/dev-machine runs outside a container,
-        where .git is genuinely present; 'unknown' only if neither is
-        available.
-        """
         env_version = os.environ.get('CODE_VERSION')
         if env_version:
             return env_version
@@ -149,12 +123,8 @@ class ObjectDetectorNode(Node):
 
     @staticmethod
     def _get_package_version():
-        """Human-facing release version (package.xml's <version>, the same
-        field CI reads to decide what to tag/publish the image as -- see
-        README's Deployment section) -- shown on the annotated feed
-        (MAX-10) so a version swap or rollback is visible on the live
-        video itself. Read from the installed package.xml rather than
-        hardcoded, so it can never drift from what CI actually built.
+        """Release version from package.xml, shown on the annotated feed so
+        a version swap/rollback is visible on the live video itself.
         """
         try:
             package_xml = os.path.join(
@@ -164,10 +134,8 @@ class ObjectDetectorNode(Node):
             return 'unknown'
 
     def _on_set_parameters(self, params):
-        """Lets `resolution`, `conf_threshold`, `iou_threshold` and `classes`
-        be changed live (e.g. from Foxglove's Parameters panel) without
-        restarting the node. Runs on the same single-threaded executor as
-        on_image, so there's no risk of it swapping self.session mid-frame.
+        """Lets params be changed live (e.g. from Foxglove) without
+        restarting the node.
         """
         for param in params:
             if param.name == 'resolution' and param.value not in SUPPORTED_RESOLUTIONS:
@@ -216,10 +184,8 @@ class ObjectDetectorNode(Node):
 
     @staticmethod
     def _letterbox(frame, size):
-        """Resize+pad frame to a size x size square, preserving aspect
-        ratio, matching the preprocessing YOLO was trained/exported with.
-        Returns the NCHW float32 blob plus the scale and padding needed to
-        map box coordinates back to the original frame.
+        """Resize+pad to a size x size square (YOLO's expected input),
+        returning the blob plus scale/padding to map boxes back later.
         """
         h, w = frame.shape[:2]
         scale = min(size / h, size / w)
@@ -238,9 +204,8 @@ class ObjectDetectorNode(Node):
         return blob, scale, (left, top)
 
     def _postprocess(self, output, frame_shape, scale, pad):
-        """output: (1, 84, N) -> list of (x1, y1, x2, y2, class_id, score)
-        in original-frame pixel coordinates, filtered to target classes and
-        NMS'd.
+        """(1, 84, N) model output -> filtered, NMS'd (x1, y1, x2, y2,
+        class_id, score) tuples in original-frame pixel coordinates.
         """
         h, w = frame_shape[:2]
         pad_x, pad_y = pad
@@ -269,7 +234,7 @@ class ObjectDetectorNode(Node):
 
         detections = []
         for i in indices:
-            # Undo letterbox padding/scale to map back to the original frame.
+            # Undo letterbox padding/scale to map back to the original frame
             ox1 = np.clip((x1[i] - pad_x) / scale, 0, w)
             oy1 = np.clip((y1[i] - pad_y) / scale, 0, h)
             ox2 = np.clip((x1[i] + bw[i] - pad_x) / scale, 0, w)
@@ -298,13 +263,8 @@ class ObjectDetectorNode(Node):
 
     def _draw_annotations(self, frame, detections):
         annotated = frame.copy()
-        # Real, permanent version indicator (replaces the earlier
-        # deploy-test placeholder) -- lets a swap/rollback be confirmed
-        # just by looking at the live feed, not just logs. package_version
-        # is the same version string rollout.json targets and CI tags the
-        # image by (see README's Deployment section). Bottom-right, small,
-        # white-on-black-outline: legible against any background without
-        # competing with the green detection boxes.
+        # Version label, bottom-right, so a swap/rollback is visible on the
+        # live feed itself, not just in logs.
         h, w = annotated.shape[:2]
         label = f'v{self.package_version}'
         font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1
@@ -329,12 +289,8 @@ class ObjectDetectorNode(Node):
         self.annotated_pub.publish(out)
 
     def on_take_snapshot(self, request, response):
-        """Freezes the most recently processed frame + its detections to
-        disk as a JPEG plus a JSON metadata sidecar (MAX-9). This is a
-        staging artifact for scripts/build_lerobot_dataset.py, not the final
-        LeRobotDataset itself — it records raw facts only, so the dataset
-        build step and the reproducibility check both work from the same
-        ground truth.
+        """Freezes the most recent frame + detections to disk as a JPEG
+        plus a JSON metadata sidecar (see scripts/build_lerobot_dataset.py).
         """
         if self.last_frame is None:
             response.success = False

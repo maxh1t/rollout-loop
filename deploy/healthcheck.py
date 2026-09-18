@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
-"""Health signal for the deploy pipeline (MAX-10 / P4).
+"""Health signal for the deploy pipeline. Run inside the just-started
+container (`docker exec ... healthcheck.py`) right after a version swap;
+passes once a few frames arrive on /camera/image_raw.
 
-Run inside the just-started container (`docker exec ... healthcheck.py`) by
-the host-side updater right after a version swap. Confirms the pipeline is
-actually alive by requiring a few frames on /camera/image_raw within a
-timeout.
-
-What this catches: a crashed node, a camera/source that failed to open, ROS
-never coming up.
-What this deliberately does NOT catch: the detector running and publishing
-garbage or wrong detections — frames arriving says nothing about whether the
-model output is correct. That gap gets written up alongside the rest of
-MAX-10's results, same shape as the reproducibility gap from P3.
+Catches a crashed node, a camera that failed to open, or ROS never coming
+up. Does NOT catch the detector publishing wrong/garbage results — frame
+arrival says nothing about whether the model output is correct.
 """
 import sys
 

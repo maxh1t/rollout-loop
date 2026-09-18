@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """One-time export of the YOLOv8n COCO-pretrained detector to ONNX, at both
-320 and 640 input resolutions, for the P2 on-device detection benchmark
-(MAX-8).
+320 and 640 input resolutions.
 
-This is a dev-machine-only tool: it needs `ultralytics` (which pulls in
-PyTorch), which is why it lives in its own throwaway venv and is never
-installed on the Pi. The Pi only ever needs the resulting .onnx files plus
-the lightweight `onnxruntime` package to run them.
+Dev-machine-only: needs `ultralytics` (pulls in PyTorch), so it lives in
+its own throwaway venv and is never installed on the Pi. The Pi only needs
+the resulting .onnx files plus the lightweight `onnxruntime` package.
 
 Usage (from repo root):
     python3 -m venv .venv-export
